@@ -181,7 +181,12 @@ void modifyToNOT(vector<string> &child_exp, char &delim, unordered_map<int, stri
     cerr << "modifyToNot returning:" << child_exp[0] << "," << delim << "," << child_exp[1] << "\n";
 }
 
-void MorganDist(string &expression, unordered_map<int, string>& CNF_map)
+void clearBracket(string& str)
+{
+    if (str[0]=='('&&str[str.size()-1]==')')
+        str = str.substr(1, str.size()-2);
+}
+vector<string> MorganDist(string &expression, unordered_map<int, string>& CNF_map)
 {
     //deMorgan forms
     //-(_._)
@@ -211,8 +216,10 @@ void MorganDist(string &expression, unordered_map<int, string>& CNF_map)
         vector<string> tokens = split(substring, delim);
         modifyToNOT(tokens, delim, CNF_map);
         expression = expression.substr(0, minus)+tokens[0]+delim+tokens[1]+expression.substr(i+3, expression.size()-(i+2));
+        cerr<<"post minus expression:"<<expression<<"\n";
         //check for --r
     }
+    cerr<<"minus:"<<minus<<"\n";
     //distributive
     int plus = -1;
     for (i=0; i<expression.size(); i++)
@@ -230,7 +237,7 @@ void MorganDist(string &expression, unordered_map<int, string>& CNF_map)
         if (expression[i+1]=='(')
         {
             string substring;
-            char delim='0';
+            char delim='!';
             while(expression[i+2]!=')')
             {
                 substring+=expression[i+2];
@@ -239,9 +246,13 @@ void MorganDist(string &expression, unordered_map<int, string>& CNF_map)
                 i++;
             }
             cerr<<"MD substring:"<<substring<<"\n";
-            vector<string> tokens = split(substring, delim);
-            
-            expression = '('+expression.substr(0, plus)+tokens[0]+')'+delim+'('+expression.substr(0, plus)+tokens[1]+')'+expression.substr(i+3, expression.size()-(i+2));
+            if (delim=='.')
+            {
+                vector<string> tokens = split(substring, delim);
+                expression = '('+expression.substr(0, plus)+tokens[0]+')'+delim+'('+expression.substr(0, plus)+tokens[1]+')'+expression.substr(i+3, expression.size()-(i+2));
+            }
+            else 
+                plus = -1;
         }
         else if (expression[i-1]==')')
         {
@@ -255,13 +266,43 @@ void MorganDist(string &expression, unordered_map<int, string>& CNF_map)
                 i--;
             }
             cerr<<"MD substring:"<<substring<<"\n";
-            vector<string> tokens = split(substring, delim);
-            expression = '('+tokens[0]+expression.substr(plus, expression.size()-plus)+')'+delim+'('+tokens[1]+expression.substr(plus, expression.size()-plus)+')';
+            if (delim=='.')
+            {
+                vector<string> tokens = split(substring, delim);
+                expression = '('+tokens[0]+expression.substr(plus, expression.size()-plus)+')'+delim+'('+tokens[1]+expression.substr(plus, expression.size()-plus)+')';                
+            }
+            else 
+                plus = -1;
         }
         //check for --r
     }
+    cerr<<"plus:"<<plus<<"\n";
 
-    cerr<<"Exp:"<<expression<<"\n";
+    //search a split about (.)
+    for (i=0; i<expression.size();i++)
+    {
+        if (expression[i]=='.')
+        {
+            break;
+        }
+    }
+    vector<string> result;
+    if (i!=expression.size())
+    {
+        string one = expression.substr(0, i);
+        clearBracket(one);
+        string two = expression.substr(i+1, expression.size()-(i+1));
+        clearBracket(two);
+        cerr<<"one:"<<one<<" two:"<<two<<"\n";
+        CNF_map[CNF_map.size()]=one;
+        CNF_map[CNF_map.size()]=two;
+        result = {one, two};
+    }
+    else
+    {
+        result = {expression};
+    }
+    return result;
 }
 
 void resolveNOT(string &expression)
@@ -287,10 +328,27 @@ void resolveNOT(string &expression)
     cerr << "resolveNOT returning:" << expression << "\n";
 }
 
-string convert_process(char sign, string &current_exp, unordered_map<int, string>& CNF_map)
+bool containsInteger(string str)
 {
-    cerr<<"inside convert process\n";
-    
+    for (int i=0; i<str.size(); i++)
+    {
+        if (isdigit(str[i]))
+            return true;
+    }
+    return false;
+}
+
+vector<string> final_set;
+void convert_process(char sign, string &current_exp, unordered_map<int, string>& CNF_map)
+{
+    cin.ignore();
+    if (!containsInteger(current_exp))
+    {
+        cerr<<"pushing to final_set:"<<current_exp<<"\n";
+        final_set.push_back(current_exp);
+        return;
+    }
+    cerr<<"inside convert process:"<<current_exp<<"\n";
     assert(current_exp[0] != '-');
     char delim;
     for (int i = 0; i < current_exp.size(); i++)
@@ -344,7 +402,7 @@ string convert_process(char sign, string &current_exp, unordered_map<int, string
             sign = '+';
             new_exp = CNF_map[stoi(child_exp[0])];
         }
-        cerr<<"sign.new_exp:"<<sign<<"."<<new_exp<<"\n";
+        cerr<<"sign:new_exp::"<<sign<<":"<<new_exp<<"\n";
         resolveNOT(new_exp);
         while (isInteger(new_exp))
         {
@@ -444,9 +502,16 @@ string convert_process(char sign, string &current_exp, unordered_map<int, string
         result+=right;
     else
         result+=right;
-    MorganDist(result, CNF_map);
-    return result; 
-
+    vector<string> results = MorganDist(result, CNF_map);
+    if (results.size()==0)
+        return;
+    else
+    {
+        for (auto&result:results)
+        {
+            convert_process('+', result, CNF_map);
+        }
+    } 
 }
 
 string detect_split_process(char sign, string &current_exp, unordered_map<int, string> &exp_map)
@@ -649,7 +714,8 @@ string FinalConvert(string expression, unordered_map<int, string>& CNF_map)
 {
     string current_exp = CNF_map[stoi(expression)];
     cerr<<"current_exp:"<<current_exp<<"\n";
-    return convert_process('+', current_exp, CNF_map);
+    convert_process('+', current_exp, CNF_map);
+    return current_exp;
 }
 
 
